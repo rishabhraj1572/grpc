@@ -47,6 +47,7 @@
 #include "absl/container/inlined_vector.h"
 #include "absl/functional/function_ref.h"
 #include "absl/meta/type_traits.h"
+#include "absl/strings/match.h"
 #include "absl/strings/numbers.h"
 #include "absl/strings/string_view.h"
 
@@ -342,6 +343,16 @@ struct XEnvoyPeerMetadata : public SimpleSliceBasedMetadata {
   static absl::string_view key() { return "x-envoy-peer-metadata"; }
 };
 
+// x-envoy-auth-failure-mode-allowed metadata trait for ext_authz failure mode
+// allow.
+struct XEnvoyAuthFailureModeAllowedMetadata : public SimpleSliceBasedMetadata {
+  static constexpr bool kPublishToApp = true;
+  static constexpr bool kRepeatable = false;
+  static constexpr bool kTransferOnTrailersOnly = false;
+  using CompressionTraits = StableValueCompressor;
+  static absl::string_view key() { return "x-envoy-auth-failure-mode-allowed"; }
+};
+
 // x-forwarded-for metadata trait for HTTP connect.
 struct XForwardedForMetadata : public SimpleSliceBasedMetadata {
   static constexpr bool kPublishToApp = true;
@@ -368,6 +379,13 @@ struct HttpAuthorityMetadata : public SimpleSliceBasedMetadata {
   using CompressionTraits = SmallSetOfValuesCompressor;
   static absl::string_view key() { return ":authority"; }
 };
+
+// Returns true if `name` refers to the request authority, i.e. ":authority"
+// or the legacy "host" header. Header names are compared case-insensitively.
+inline bool IsAuthorityHeaderName(absl::string_view name) {
+  return absl::EqualsIgnoreCase(name, HttpAuthorityMetadata::key()) ||
+         absl::EqualsIgnoreCase(name, HostMetadata::key());
+}
 
 // :path metadata trait.
 struct HttpPathMetadata : public SimpleSliceBasedMetadata {
@@ -605,6 +623,15 @@ struct LbPolicyDrop {
 // Annotation added by a server transport to note the peer making a request.
 struct PeerString {
   static absl::string_view DebugKey() { return "PeerString"; }
+  static constexpr bool kRepeatable = false;
+  using ValueType = Slice;
+  static std::string DisplayValue(const ValueType& x);
+};
+
+// Annotation added by a server transport to note the local address of the
+// connection.
+struct LocalAddressString {
+  static absl::string_view DebugKey() { return "LocalAddressString"; }
   static constexpr bool kRepeatable = false;
   using ValueType = Slice;
   static std::string DisplayValue(const ValueType& x);
@@ -1736,6 +1763,19 @@ Derived MetadataMap<Derived, Traits...>::Copy() const {
   return out;
 }
 
+// Returns the request authority: ":authority" if present, otherwise the
+// legacy "host" header, otherwise nullptr. Header matchers that look up the
+// authority (xDS route header matchers, RBAC, and xDS matcher contexts) use
+// this so that they all agree on the authority even if a request carries both
+// headers with different values.
+template <typename Derived, typename... Traits>
+const Slice* GetAuthorityOrHost(const MetadataMap<Derived, Traits...>& md) {
+  if (const Slice* authority = md.get_pointer(HttpAuthorityMetadata())) {
+    return authority;
+  }
+  return md.get_pointer(HostMetadata());
+}
+
 }  // namespace grpc_core
 
 struct grpc_metadata_batch;
@@ -1757,14 +1797,17 @@ using grpc_metadata_batch_base = grpc_core::MetadataMap<
     grpc_core::GrpcServerStatsBinMetadata, grpc_core::GrpcTraceBinMetadata,
     grpc_core::GrpcTagsBinMetadata, grpc_core::GrpcLbClientStatsMetadata,
     grpc_core::LbCostBinMetadata, grpc_core::LbTokenMetadata,
-    grpc_core::XEnvoyPeerMetadata, grpc_core::XForwardedForMetadata,
-    grpc_core::XForwardedHostMetadata, grpc_core::W3CTraceParentMetadata,
+    grpc_core::XEnvoyPeerMetadata,
+    grpc_core::XEnvoyAuthFailureModeAllowedMetadata,
+    grpc_core::XForwardedForMetadata, grpc_core::XForwardedHostMetadata,
+    grpc_core::W3CTraceParentMetadata,
     // Non-encodable things
     grpc_core::GrpcStreamNetworkState, grpc_core::LbPolicyDrop,
     grpc_core::PeerString, grpc_core::GrpcStatusContext,
-    grpc_core::GrpcStatusFromWire, grpc_core::GrpcCallWasCancelled,
-    grpc_core::WaitForReady, grpc_core::IsTransparentRetry,
-    grpc_core::GrpcTrailersOnly, grpc_core::GrpcTarPit,
+    grpc_core::LocalAddressString, grpc_core::GrpcStatusFromWire,
+    grpc_core::GrpcCallWasCancelled, grpc_core::WaitForReady,
+    grpc_core::IsTransparentRetry, grpc_core::GrpcTrailersOnly,
+    grpc_core::GrpcTarPit,
     grpc_core::GrpcRegisteredMethod GRPC_CUSTOM_CLIENT_METADATA
         GRPC_CUSTOM_SERVER_METADATA>;
 

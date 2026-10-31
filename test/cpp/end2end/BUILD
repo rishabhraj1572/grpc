@@ -56,7 +56,7 @@ grpc_cc_library(
     deps = [
         "//:grpc",
         "//:grpc++",
-        "//src/proto/grpc/health/v1:health_cc_grpc",
+        "//:health_cc_grpc",
     ],
 )
 
@@ -177,12 +177,12 @@ grpc_cc_test(
         "//:grpc++",
         "//:grpc++_public_hdrs",
         "//:grpc_public_hdrs",
+        "//:health_cc_grpc",
         "//:iomgr",
         "//src/core:client_channel_backup_poller",
         "//src/core:experiments",
         "//src/core:grpc_check",
         "//src/core:iomgr_port",
-        "//src/proto/grpc/health/v1:health_cc_grpc",
         "//src/proto/grpc/testing:echo_cc_grpc",
         "//src/proto/grpc/testing:echo_messages_cc_proto",
         "//src/proto/grpc/testing/duplicate:echo_duplicate_cc_grpc",
@@ -200,6 +200,9 @@ grpc_cc_test(
         "absl/synchronization",
         "absl/time",
         "gtest",
+    ],
+    tags = [
+        "cpp_end2end_test",
     ],
     deps = [
         ":end2end_test_utils",
@@ -264,6 +267,9 @@ grpc_cc_test(
     external_deps = [
         "absl/log:check",
         "gtest",
+    ],
+    tags = [
+        "cpp_end2end_test",
     ],
     deps = [
         "//:gpr",
@@ -707,7 +713,7 @@ grpc_cc_test(
         "//:grpc++",
         "//:grpc++_public_hdrs",
         "//:grpc_public_hdrs",
-        "//src/proto/grpc/health/v1:health_cc_grpc",
+        "//:health_cc_grpc",
         "//src/proto/grpc/testing:echo_cc_grpc",
         "//src/proto/grpc/testing:echo_messages_cc_proto",
         "//src/proto/grpc/testing/duplicate:echo_duplicate_cc_grpc",
@@ -880,6 +886,7 @@ grpc_cc_test(
         "//:grpcpp_backend_metric_recorder",
         "//:grpcpp_call_metric_recorder",
         "//:grpcpp_orca_service",
+        "//:health_cc_grpc",
         "//:iomgr",
         "//:parse_address",
         "//:ref_counted_ptr",
@@ -898,7 +905,6 @@ grpc_cc_test(
         "//src/core:time",
         "//src/proto/grpc/channelz/v2:channelz_cc_proto",
         "//src/proto/grpc/channelz/v2:property_list_cc_proto",
-        "//src/proto/grpc/health/v1:health_cc_grpc",
         "//src/proto/grpc/testing:echo_cc_grpc",
         "//src/proto/grpc/testing:echo_messages_cc_proto",
         "//src/proto/grpc/testing/duplicate:echo_duplicate_cc_grpc",
@@ -1057,6 +1063,7 @@ grpc_cc_test(
         "//:grpc_security_base",
         "//:grpc_service_config_impl",
         "//:iomgr",
+        "//:load_balancer_cc_grpc",
         "//:parse_address",
         "//:ref_counted_ptr",
         "//src/core:channel_args",
@@ -1066,7 +1073,6 @@ grpc_cc_test(
         "//src/core:grpc_fake_credentials",
         "//src/core:grpc_lb_policy_grpclb",
         "//src/core:sync",
-        "//src/proto/grpc/lb/v1:load_balancer_cc_grpc",
         "//src/proto/grpc/testing:echo_cc_grpc",
         "//src/proto/grpc/testing:echo_messages_cc_proto",
         "//src/proto/grpc/testing/duplicate:echo_duplicate_cc_grpc",
@@ -1239,8 +1245,8 @@ grpc_cc_test(
         "//:grpc",
         "//:grpc++",
         "//:grpcpp_server_load_reporting",
+        "//:load_reporter_cc_grpc",
         "//src/core:client_channel_backup_poller",
-        "//src/proto/grpc/lb/v1:load_reporter_cc_grpc",
         "//src/proto/grpc/testing:echo_cc_grpc",
         "//test/core/test_util:grpc_test_util",
         "//test/cpp/util:test_util",
@@ -1604,6 +1610,9 @@ grpc_cc_test(
         "absl/strings",
         "absl/time",
     ],
+    tags = [
+        "cpp_end2end_test",
+    ],
     deps = [
         "//:gpr",
         "//:grpc",
@@ -1635,7 +1644,10 @@ grpc_cc_test(
         "absl/log",
         "absl/synchronization",
     ],
-    tags = ["ssl_credentials_test"],
+    tags = [
+        "cpp_end2end_test",
+        "ssl_credentials_test",
+    ],
     deps = [
         ":test_service_impl",
         "//:gpr",
@@ -1668,7 +1680,10 @@ grpc_cc_test(
         "absl/strings:string_view",
         "absl/synchronization",
     ],
-    tags = ["tls_credentials_test"],
+    tags = [
+        "cpp_end2end_test",
+        "tls_credentials_test",
+    ],
     deps = [
         ":test_service_impl",
         "//:gpr",
@@ -1703,7 +1718,10 @@ grpc_cc_test(
         "absl/synchronization",
         "gtest",
     ],
-    tags = ["crl_provider_test"],
+    tags = [
+        "cpp_end2end_test",
+        "crl_provider_test",
+    ],
     deps = [
         ":test_service_impl",
         "//:gpr",
@@ -1746,8 +1764,12 @@ grpc_cc_test(
         "absl/synchronization",
         "gtest",
     ],
-    tags = ["crl_provider_test"],
+    tags = [
+        "cpp_end2end_test",
+        "crl_provider_test",
+    ],
     deps = [
+        ":end2end_test_utils",
         ":test_service_impl",
         "//:gpr",
         "//:grpc",
@@ -1813,7 +1835,10 @@ grpc_cc_test(
         "libcrypto",
         "libssl",
     ],
-    tags = ["tls_private_key_signer_test"],
+    tags = [
+        "cpp_end2end_test",
+        "tls_private_key_signer_test",
+    ],
     deps = [
         ":test_service_impl",
         ":tls_test_private_key_signer",
@@ -1880,7 +1905,10 @@ grpc_cc_test(
         "libcrypto",
         "libssl",
     ],
-    tags = ["tls_cert_selection_offload_end2end_test"],
+    tags = [
+        "cpp_end2end_test",
+        "tls_cert_selection_offload_end2end_test",
+    ],
     deps = [
         ":test_service_impl",
         ":tls_test_certificate_selector",

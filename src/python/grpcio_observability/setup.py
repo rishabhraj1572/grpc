@@ -220,7 +220,7 @@ if BUILD_WITH_STATIC_LIBSTDCXX:
 
 
 def _get_cc_files():
-    cc_files = observability_lib_deps.CC_FILES
+    cc_files = list(observability_lib_deps.CC_FILES)
     if "win32" in sys.platform:
         cc_files += observability_lib_deps.CC_FILES_WINDOWS_ONLY
     return [os.path.normpath(cc_file) for cc_file in cc_files]
@@ -322,7 +322,6 @@ if __name__ == "__main__":
         python_requires=f">={python_version.MIN_PYTHON_VERSION}",
         install_requires=[
             "grpcio=={version}".format(version=grpc_version.VERSION),
-            "setuptools>=77.0.1",
             "opentelemetry-api>=1.21.0",
         ],
         cmdclass={"build_ext": BuildExt},

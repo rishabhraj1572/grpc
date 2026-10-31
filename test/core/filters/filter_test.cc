@@ -91,6 +91,7 @@ void FilterTest::Shutdown() {
   while (destination_->PopHandler().has_value()) {
   }
   destination_.reset();
+  Cleanup();
 }
 
 ///////////////////////////////////////////////////////////////////////////////

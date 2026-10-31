@@ -205,8 +205,17 @@ class FilterTest : public YodelTest {
   // R"("maxRequestMessageBytes": 4)". Call before StartCall().
   void SetServiceConfig(absl::string_view method_config_fields);
 
+  // Called at teardown, after the call under test has been cancelled and the
+  // stack under test torn down, but before the event engine goes away.
+  // Subclasses that own objects holding a reference to event_engine() must
+  // override this to release them.
+  virtual void Cleanup() {}
+
  private:
   static constexpr absl::string_view kTestPath = "/test_method";
+
+  // Tears down the stack under test, then calls Cleanup().
+  void Shutdown() override;
 
   // The bottom of the chain under test: stands in for the transport (or for
   // whatever the next interceptor down would be), and records the handler for
@@ -251,8 +260,6 @@ class FilterTest : public YodelTest {
 
   ChannelArgs WithTestChannelArgs(const ChannelArgs& args);
   absl::Status FinishInitChannel(InterceptionChainBuilder& builder);
-
-  void Shutdown() override;
 
   RefCountedPtr<TestCallDestination> destination_ =
       MakeRefCounted<TestCallDestination>();

@@ -66,6 +66,7 @@ extern void RegisterOutlierDetectionLbPolicy(
 extern void RegisterWeightedTargetLbPolicy(CoreConfiguration::Builder* builder);
 extern void RegisterPickFirstLbPolicy(CoreConfiguration::Builder* builder);
 extern void RegisterRingHashLbPolicy(CoreConfiguration::Builder* builder);
+extern void RegisterAutoShardingLbPolicy(CoreConfiguration::Builder* builder);
 extern void RegisterRoundRobinLbPolicy(CoreConfiguration::Builder* builder);
 extern void RegisterWeightedRoundRobinLbPolicy(
     CoreConfiguration::Builder* builder);
@@ -107,20 +108,17 @@ void RegisterBuiltins(CoreConfiguration::Builder* builder) {
     top_filter_server_virtual_reg.BeforeAll();
   }
 
-  if (IsXdsServerFilterChainPerRouteEnabled()) {
-    auto& server_config_selector_interceptor_reg =
-        builder->channel_init()
-            ->RegisterFilter<ServerConfigSelectorInterceptor>(
-                GRPC_SERVER_CHANNEL)
-            .IfHasChannelArg(ServerConfigSelectorProvider::ChannelArgName());
+  auto& server_config_selector_interceptor_reg =
+      builder->channel_init()
+          ->RegisterFilter<ServerConfigSelectorInterceptor>(GRPC_SERVER_CHANNEL)
+          .IfHasChannelArg(ServerConfigSelectorProvider::ChannelArgName());
 
-    if (IsFixV3FilterStackServerSideOrderingEnabled()) {
-      server_config_selector_interceptor_reg.Before(
-          {LegacyMaxAgeFilter::kFilter.name});
-    } else {
-      server_config_selector_interceptor_reg.After(
-          {LegacyMaxAgeFilter::kFilter.name});
-    }
+  if (IsFixV3FilterStackServerSideOrderingEnabled()) {
+    server_config_selector_interceptor_reg.Before(
+        {LegacyMaxAgeFilter::kFilter.name});
+  } else {
+    server_config_selector_interceptor_reg.After(
+        {LegacyMaxAgeFilter::kFilter.name});
   }
 }
 
@@ -145,6 +143,7 @@ void BuildCoreConfiguration(CoreConfiguration::Builder* builder) {
 #ifndef GRPC_MINIMAL_LB_POLICY
   RegisterRoundRobinLbPolicy(builder);
   RegisterRingHashLbPolicy(builder);
+  RegisterAutoShardingLbPolicy(builder);
   RegisterWeightedRoundRobinLbPolicy(builder);
 #endif
   BuildClientChannelConfiguration(builder);

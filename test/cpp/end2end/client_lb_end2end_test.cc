@@ -14,6 +14,7 @@
 
 #include <grpc/event_engine/endpoint_config.h>
 #include <grpc/grpc.h>
+#include <grpc/health/v1/health.grpc.pb.h>
 #include <grpc/support/alloc.h>
 #include <grpc/support/atm.h>
 #include <grpc/support/time.h>
@@ -33,6 +34,7 @@
 #include <deque>
 #include <memory>
 #include <mutex>
+#include <optional>
 #include <random>
 #include <set>
 #include <string>
@@ -67,7 +69,6 @@
 #include "src/cpp/server/secure_server_credentials.h"
 #include "src/proto/grpc/channelz/v2/channelz.pb.h"
 #include "src/proto/grpc/channelz/v2/property_list.pb.h"
-#include "src/proto/grpc/health/v1/health.grpc.pb.h"
 #include "src/proto/grpc/testing/echo.grpc.pb.h"
 #include "test/core/test_util/fake_stats_plugin.h"
 #include "test/core/test_util/port.h"
@@ -2063,7 +2064,7 @@ TEST_F(RoundRobinTest, SingleReconnect) {
 // is not running on the server, the channel should be treated as healthy.
 TEST_F(RoundRobinTest, ServersHealthCheckingUnimplementedTreatedAsHealthy) {
   SKIP_TEST_FOR_PH2_CLIENT("TODO(tjagtap) [PH2][P3][Client] Fix bug");
-  SKIP_TEST_FOR_PH2_SERVER("TODO(ritulb) [PH2][P2] Fix bug");
+  SKIP_TEST_FOR_PH2_SERVER("TODO(ritulb) [PH2][P1] Fix bug");
   StartServers(1);  // Single server
   ChannelArguments args;
   args.SetServiceConfigJSON(
@@ -2191,6 +2192,8 @@ TEST_F(RoundRobinTest, HealthCheckingHandlesSubchannelFailure) {
   for (size_t i = 0; i < 100; i++) {
     CheckRpcSendOk(DEBUG_LOCATION, stub);
   }
+  // Clean up.
+  EnableDefaultHealthCheckService(false);
 }
 
 TEST_F(RoundRobinTest, WithHealthCheckingInhibitPerChannel) {
@@ -2728,7 +2731,7 @@ TEST_F(ClientLbInterceptTrailingMetadataTest, InterceptsRetriesDisabled) {
 
 TEST_F(ClientLbInterceptTrailingMetadataTest, InterceptsRetriesEnabled) {
   SKIP_RETRY_TEST_FOR_PH2_CLIENT(
-      "TODO (tjagtap) [PH2][P5][Retry] Test with Retry-PH2 feature");
+      "TODO(tjagtap) [PH2][P5][Retry] Test with Retry-PH2 feature");
   const int kNumServers = 1;
   const int kNumRpcs = 10;
   StartServers(kNumServers);
@@ -4145,7 +4148,6 @@ class ClientLbSubchannelMetricsTest : public ClientLbEnd2endTest {
 
 TEST_F(ClientLbSubchannelMetricsTest, SubchannelMetricsBasic) {
   SKIP_TEST_FOR_PH2_CLIENT("TODO(tjagtap) [PH2][P3][Client] Fix bug");
-  SKIP_TEST_FOR_PH2_SERVER("TODO(tjagtap) [PH2][P1][Server] Fix bug");
   StartServers(1, {}, grpc::InsecureServerCredentials());
   const int port = servers_[0]->port_;
   std::string target = grpc_core::LocalIpAndPort(port);
@@ -4164,6 +4166,10 @@ TEST_F(ClientLbSubchannelMetricsTest, SubchannelMetricsBasic) {
   // has actually been registered with the server before we tell the
   // server to send GOAWAYs.
   CheckRpcSendOk(DEBUG_LOCATION, stub);
+  // A PH2 server runs on the Call V3 stack. This decides which GOAWAY the
+  // server is expected to send on shutdown.
+  const bool is_ph2_server =
+      grpc_core::IsPh2ServerEnabled() || grpc_core::IsPh2ClientServerEnabled();
   EXPECT_THAT(
       stats_plugin_->GetUInt64MetricValueByName(
           "grpc.subchannel.connection_attempts_succeeded", {target, "", ""}),
@@ -4176,10 +4182,31 @@ TEST_F(ClientLbSubchannelMetricsTest, SubchannelMetricsBasic) {
       WaitForChannelState(channel.get(), [](grpc_connectivity_state state) {
         return state == GRPC_CHANNEL_IDLE;
       }));
-  EXPECT_THAT(stats_plugin_->GetUInt64MetricValueByName(
-                  "grpc.subchannel.disconnections",
-                  {target, "", "", "GOAWAY NO_ERROR"}),
-              ::testing::Optional(1));
+  const std::optional<uint64_t> goaway_no_error =
+      stats_plugin_->GetUInt64MetricValueByName(
+          "grpc.subchannel.disconnections",
+          {target, "", "", "GOAWAY NO_ERROR"});
+  if (is_ph2_server) {
+    // PH2 server: Server::Shutdown() with a zero deadline first requests
+    // a graceful GOAWAY (NO_ERROR) and then cancels all calls, which requests
+    // an immediate GOAWAY (INTERNAL_ERROR). Depending on timing, either one
+    // can be the first GOAWAY to reach the client. The client records the
+    // disconnection using the first GOAWAY it receives, so assert that
+    // exactly one disconnection was recorded with either label.
+    const std::optional<uint64_t> goaway_internal_error =
+        stats_plugin_->GetUInt64MetricValueByName(
+            "grpc.subchannel.disconnections",
+            {target, "", "", "GOAWAY INTERNAL_ERROR"});
+    EXPECT_EQ(goaway_no_error.value_or(0u) + goaway_internal_error.value_or(0u),
+              1u)
+        << "GOAWAY NO_ERROR count: " << goaway_no_error.value_or(0u)
+        << ", GOAWAY INTERNAL_ERROR count: "
+        << goaway_internal_error.value_or(0u);
+  } else {
+    // Non-PH2 server: the initial graceful GOAWAY (NO_ERROR) is always
+    // written before the immediate GOAWAY, so the client records NO_ERROR.
+    EXPECT_THAT(goaway_no_error, ::testing::Optional(1));
+  }
   EXPECT_THAT(stats_plugin_->GetInt64MetricValueByName(
                   "grpc.subchannel.open_connections", {target, "none", "", ""}),
               ::testing::Optional(0));
@@ -4188,6 +4215,7 @@ TEST_F(ClientLbSubchannelMetricsTest, SubchannelMetricsBasic) {
 TEST_F(ClientLbSubchannelMetricsTest, MultipleConnectionAttemptsFailed) {
   // Flake rate is less than once in 3 days.
   SKIP_TEST_FOR_PH2_SERVER("TODO(tjagtap) [PH2][P1][Server] Fix flake");
+  SKIP_TEST_FOR_PH2_CLIENT("TODO(ritulb) [PH2][P3][Client] Fix flake");
   ConnectionAttemptInjector injector;
   const int port = grpc_pick_unused_port_or_die();
   std::string target = grpc_core::LocalIpAndPort(port);

@@ -616,6 +616,7 @@ TEST_F(GrpcTlsCredentialsOptionsTest, SetKeyExchangeGroups) {
   auto options = MakeRefCounted<grpc_tls_credentials_options>();
   std::vector<grpc_tls_key_exchange_group> groups = {
       grpc_tls_key_exchange_group::GRPC_TLS_GROUP_X25519_MLKEM768,
+      grpc_tls_key_exchange_group::GRPC_TLS_GROUP_MLKEM1024,
       grpc_tls_key_exchange_group::GRPC_TLS_GROUP_X25519,
       grpc_tls_key_exchange_group::GRPC_TLS_GROUP_SECP256R1,
       grpc_tls_key_exchange_group::GRPC_TLS_GROUP_SECP384R1,
@@ -623,6 +624,41 @@ TEST_F(GrpcTlsCredentialsOptionsTest, SetKeyExchangeGroups) {
   grpc_tls_credentials_options_set_key_exchange_groups(
       options.get(), groups.data(), groups.size());
   EXPECT_EQ(options->key_exchange_groups(), groups);
+}
+
+TEST_F(GrpcTlsCredentialsOptionsTest, SetExportedKeyingMaterialOptions) {
+  auto options = MakeRefCounted<grpc_tls_credentials_options>();
+  grpc_tls_credentials_options_set_exported_keying_material_options(
+      options.get(), "test_label", 32);
+  EXPECT_EQ(options->exported_keying_material_label(), "test_label");
+  EXPECT_EQ(options->exported_keying_material_length(), 32);
+}
+
+TEST_F(GrpcTlsCredentialsOptionsTest,
+       SetExportedKeyingMaterialOptionsWithNullLabel) {
+  auto options = MakeRefCounted<grpc_tls_credentials_options>();
+  ASSERT_DEATH(
+      grpc_tls_credentials_options_set_exported_keying_material_options(
+          options.get(), nullptr, 32),
+      "");
+}
+
+TEST_F(GrpcTlsCredentialsOptionsTest,
+       SetExportedKeyingMaterialOptionsWithEmptyLabel) {
+  auto options = MakeRefCounted<grpc_tls_credentials_options>();
+  ASSERT_DEATH(
+      grpc_tls_credentials_options_set_exported_keying_material_options(
+          options.get(), "", 32),
+      "");
+}
+
+TEST_F(GrpcTlsCredentialsOptionsTest,
+       SetExportedKeyingMaterialOptionsWithZeroLength) {
+  auto options = MakeRefCounted<grpc_tls_credentials_options>();
+  ASSERT_DEATH(
+      grpc_tls_credentials_options_set_exported_keying_material_options(
+          options.get(), "test_label", 0),
+      "");
 }
 
 }  // namespace testing

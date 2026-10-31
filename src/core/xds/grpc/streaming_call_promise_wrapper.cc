@@ -33,7 +33,7 @@ namespace grpc_core {
 // into XdsStreamingCallPromiseWrapper. It holds a weak reference to avoid
 // reference cycles between the transport stream and the wrapper.
 class XdsStreamingCallPromiseWrapper::EventHandler final
-    : public XdsTransportFactory::XdsTransport::StreamingCall::EventHandler {
+    : public XdsTransport::StreamingCall::EventHandler {
  public:
   explicit EventHandler(
       WeakRefCountedPtr<XdsStreamingCallPromiseWrapper> promise_wrapper)
@@ -54,17 +54,19 @@ class XdsStreamingCallPromiseWrapper::EventHandler final
 };
 
 XdsStreamingCallPromiseWrapper::XdsStreamingCallPromiseWrapper(
-    XdsTransport& transport, const char* method) {
+    XdsTransport& transport, const char* method,
+    XdsTransport::CallOptions options) {
   auto internal_event_handler = std::make_unique<EventHandler>(
       WeakRefAsSubclass<XdsStreamingCallPromiseWrapper>());
-  call_ =
-      transport.CreateStreamingCall(method, std::move(internal_event_handler));
+  call_ = transport.CreateStreamingCall(
+      method, std::move(internal_event_handler), options);
 }
 
 Poll<StatusFlag> XdsStreamingCallPromiseWrapper::PollPushMessage() {
   MutexLock lock(mu_);
   // If the send is still in flight on the transport, wait for completion.
   if (send_state_ == SendState::kSendMessageInFlight ||
+      send_state_ == SendState::kSendMessageAndHalfCloseInFlight ||
       send_state_ == SendState::kSendMessageInFlightAndHalfCloseRequested) {
     return Pending{};
   }
@@ -85,7 +87,12 @@ XdsStreamingCallPromiseWrapper::PollPullMessage() {
     case RecvState::kRecvMessageInFlight:
       return Pending{};
     case RecvState::kReceivedStatus:
-      return std::nullopt;
+      // Status may arrive after a message has been received but before it
+      // has been consumed, so return any buffered message before reporting
+      // end of stream.
+      return std::exchange(recv_message_, std::nullopt);
+    default:
+      return Pending{};
   }
 }
 
@@ -107,6 +114,8 @@ void XdsStreamingCallPromiseWrapper::OnRequestSent(bool ok) {
       if (send_state_ == SendState::kSendMessageInFlightAndHalfCloseRequested) {
         send_state_ = SendState::kHalfCloseInFlight;
         send_half_close = true;
+      } else if (send_state_ == SendState::kSendMessageAndHalfCloseInFlight) {
+        send_state_ = SendState::kHalfCloseInFlight;
       } else if (send_state_ == SendState::kSendMessageInFlight) {
         send_state_ = SendState::kIdle;
       }
